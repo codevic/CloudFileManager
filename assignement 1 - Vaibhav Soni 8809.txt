@@ -1,0 +1,213 @@
+Front end web interface on local
+
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>cloud assignment 1</title>
+</head>
+
+
+{{results }}
+<h1>Vaibhav Soni 1001558809</h1>
+<form name="upload" action="/" method="post" enctype="multipart/form-data" style="background-color:skyblue">
+    <h3> Upload File:</h3>
+ <input type="file" name="file_upload"> <br>
+     <h3>Enter the Key:</h3>
+    <input type="text" name="key">
+  <input type="submit" name="submit" value="Upload"> <br>
+
+   
+
+    <h3>Download File:</h3>
+    <input type="text" name="file_download">
+
+    <input type="text" name="key">
+    <input type="submit" name="submit" value="Download"> <br>
+
+    <h3> List files:</h3>
+    <input type="submit" name="submit" value="List"> <br>
+
+
+   
+
+
+</form>
+
+</body>
+</html>
+
+
+
+****************************************************************************#######################################################
+
+#Python code#
+
+
+import urllib2
+
+import pyDes
+
+
+import hashlib
+from flask import Flask, render_template, request
+
+
+import swiftclient
+import keystoneclient
+import os
+
+
+
+auth_url= "https://identity.open.softlayer.com"+ '/v3'
+projectId= "******************"
+region= '*************'
+userId= "***************"
+password= "************"
+container_name = '********', '****************'
+conn = swiftclient.Connection(key=password,
+                              authurl=auth_url,
+                              auth_version='3',
+                              os_options={"project_id": projectId,
+                                          "user_id": userId,
+                                          "region_name": region})
+
+folder = '****'
+downloadpath = "***"
+fl =''
+
+ky = pyDes.des("DESCRYPT", pyDes.CBC, "\0\0\0\0\0\0\0\0", pad=None, padmode=pyDes.PAD_PKCS5)
+BS = 16
+pad = lambda s: s + (BS - len(s) % BS) * chr(BS - len(s) % BS)
+unpad = lambda s: s[0:-ord(s[-1])]
+
+app = Flask(__name__)
+app.config['UPLOAD_FOLDER'] = folder
+
+dic={}
+@app.route('/', methods=['POST', 'GET'])
+def main_page():
+    res = ""
+    file_download = ""
+    if request.method == 'POST':
+        if request.form['submit'] == 'Upload':
+            global fl
+            fl = request.files['file_upload']
+            key = request.form['key']
+            #print 'a'
+            pushobj(fl.filename)
+
+        elif request.form['submit'] == 'Size':
+            #print 'list'
+            res = size()
+
+        elif request.form['submit'] == 'Download':
+            fl = request.form['file_download']
+            dkey = request.form['dkey']
+            
+            pullobj(fl)
+
+
+        elif request.form['submit'] == 'List':
+            #print 'list'
+            res = list()
+
+        elif request.form['submit'] == 'Listlocal':
+            print 'list'
+
+
+
+        elif request.form['submit'] == 'Remove':
+            size = request.form['fsize']
+            remove(size)
+
+        elif request.form['submit'] == 'Delete':
+            filename = request.form['file_delete']
+            delete(filename)
+
+
+
+
+    return render_template('index1.html', res=res)
+
+def pushobj(filename):
+    
+    global fl
+    fl = request.files['file_upload']
+    filename = str(fl.filename)
+    data = fl.read()
+    
+    no = checksum(data)
+    
+    text = data+'$$$$$$'+no
+    contents = ky.encrypt(text)
+    dic[fl.filename]=no
+    
+    fname, ext = os.path.splitext(fl.filename)
+    
+    if ext == ".txt":
+        conn.put_object('######', fl.filename, contents, content_type='text/plain')
+    else:
+        
+        conn.put_object('######', fl.filename, contents, content_type='text/plain')
+    
+    fl.close()
+
+def checksum(data):
+        global fl
+        md5 = hashlib.md5()
+        md5.update(data)
+        
+        return md5.hexdigest()
+        
+def listcloudfiles():
+    print ("nObject List:")
+	Toatalsize = 0
+    list = ""
+    for container in conn.get_account()[1]:
+        for data in conn.get_container(container['name'])[1]:
+            Toatalsize+= size + data['bytes'];
+            
+
+	    list+=('\r\nobject: {0} size: {1} date: {2}\r\n'.format(data['name'], data['bytes'], data['last_modified']))
+            
+    return list,Totalsize
+
+def delete(filename):/* for deleting the file by name*/
+    for container in conn.get_account()[1]:
+        #print container['name']
+        for data in conn.get_container(container['name']):
+        conn.delete_object(container['name'], filename)
+
+
+
+
+def pullobj(filename):
+    
+    fname, ext = os.path.splitext(filename)
+    
+    for container in conn.get_account()[1]:
+        
+        for data1 in conn.get_container(container['name'])[1]:
+            
+            if filename == data1['name']:
+                
+                try:
+                    fobj = conn.get_object(container['name'], filename)
+                   
+                    with open("./static/"+ filename, 'wb') as fw:
+                        data = str(fobj)
+                        
+                        fw.write(data)
+                        fw.close()
+                
+                except urllib2.HTTPError as err:
+                    if err.code == 404:
+                        continue
+                
+                return render_template('index1.html', file_download=filename)
+
+port = int(os.getenv('VCAP_APP_PORT', 8000))
+if __name__ == '__main__':
+     #app.run(debug= True)
+     #For Local Runn
+     app.run(debug=True,host = '0.0.0.0', port=port)
